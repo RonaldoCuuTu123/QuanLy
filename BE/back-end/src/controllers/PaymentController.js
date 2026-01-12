@@ -77,55 +77,31 @@ export const getPaymentById = async (req, res) => {
 export const createPayment = async (req, res) => {
     try {
         const {
-            HouseholdID,
-            householdId,
-            CollectionID,
-            campaignId,
-            Amount,
-            amount,
-            PaymentDate,
-            paymentDate,
-            PaymentMethod,
-            paymentMethod,
-            CollectorName,
-            collectorName
+            householdId, campaignId, amount, paymentDate, paymentMethod, collectorName
         } = req.body;
 
-        // Map camelCase từ FE sang PascalCase cho BE
-        const householdID = HouseholdID || householdId;
-        const collectionID = CollectionID || campaignId;
-        const paymentAmount = Amount || amount;
-        const pDate = PaymentDate || paymentDate;
-        const pMethod = PaymentMethod || paymentMethod || 'Tiền mặt';
-        const collector = CollectorName || collectorName || 'Nguyễn Văn Cường';
+        // Ưu tiên lấy camelCase từ FE hoặc PascalCase nếu FE thay đổi
+        const hId = householdId || req.body.HouseholdID;
+        const cId = campaignId || req.body.CollectionID;
 
-        if (!householdID || !collectionID) {
-            return res.status(400).json({ error: true, message: 'Missing required fields: HouseholdID and CollectionID' });
+        if (!hId || !cId) {
+            return res.status(400).json({ error: true, message: 'Thiếu mã hộ khẩu hoặc mã đợt thu' });
         }
 
-        // Tạo FeeDetail (Payment)
-        const newFeeDetail = await FeeDetail.create({
-            CollectionID: collectionID,
-            HouseholdID: householdID,
-            Amount: paymentAmount || 0,
-            PaymentDate: pDate || new Date().toISOString().split('T')[0],
-            PaymentMethod: pMethod,
+        const newPayment = await FeeDetail.create({
+            CollectionID: cId,
+            HouseholdID: hId,
+            Amount: amount || 0,
+            PaymentDate: paymentDate || new Date(),
+            PaymentMethod: paymentMethod || 'Tiền mặt',
             PaymentStatus: 'Đã đóng',
-            CollectorName: collector
+            CollectorName: collectorName || 'Cán bộ thu phí'
         });
 
-        // Fetch lại với relations
-        const payment = await FeeDetail.findByPk(newFeeDetail.FeeDetailID, {
-            include: [
-                { model: FeeCollection },
-                { model: Household }
-            ]
-        });
-
-        res.status(201).json(mapFeeDetailToPayment(payment));
+        res.status(201).json({ error: false, message: 'Thu phí thành công', data: newPayment });
     } catch (error) {
-        console.error('Error creating payment:', error);
-        res.status(500).json({ error: true, message: 'Error creating payment', details: error.message });
+        console.error('Lỗi thu phí:', error);
+        res.status(500).json({ error: true, message: error.message });
     }
 };
 

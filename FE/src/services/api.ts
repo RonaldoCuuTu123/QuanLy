@@ -62,33 +62,35 @@ export const api = {
   },
 
   // --- HOUSEHOLD ---
+  // Trong FE/src/services/api.ts
+  // Sửa đoạn map trong getHouseholds
+  // Sửa đoạn map trong getHouseholds
   getHouseholds: async (): Promise<Household[]> => {
     try {
       const res = await axiosInstance.get('/households/get-all-households');
-      // Handle BE error response trong 200 status
-      if (res.data && res.data.error) {
-        console.error('BE Error:', res.data.message);
-        return []; // Trả về mảng rỗng nếu BE có lỗi
-      }
       return (res.data || []).map((item: any) => ({
-        id: item.HouseholdID || item.id || `HH${Date.now()}`,
-        householdNumber: item.HouseholdNumber || item.householdNumber || '',
-        headName: item.HouseholdHead || item.headName || '',
-        address: (item.Street && item.Ward && item.District)
-          ? `${item.Street}, ${item.Ward}, ${item.District}`
-          : item.address || '',
-        street: item.Street || item.street || '',
-        ward: item.Ward || item.ward || 'La Khê',
-        district: item.District || item.district || 'Hà Đông',
-        members: Array.isArray(item.Members) ? item.Members : [],
+        id: item.HouseholdID || item.id,
+        householdNumber: item.HouseholdNumber || item.householdNumber,
+        headName: item.HouseholdHead || item.headName,
+        address: item.address || `${item.Street}, ${item.Ward}, ${item.District}`,
+        street: item.Street || '',
+        ward: item.Ward || '',
+        district: item.District || '',
+        // Map chi tiết từng member để hiện quê quán
+        members: (item.members || item.Residents || []).map((m: any) => ({
+          id: m.ResidentID || m.id,
+          fullName: m.FullName || m.fullName,
+          dob: m.DateOfBirth || m.dob,
+          relationToHead: m.Relationship || m.relationToHead,
+          origin: m.Hometown || m.origin || 'Chưa cập nhật', // Lấy Hometown từ BE
+          idCardNumber: m.IDCardNumber || m.idCardNumber
+        })),
         history: item.history || []
       }));
     } catch (error) {
-      console.error('Lỗi lấy danh sách hộ khẩu:', error);
-      return []; // Trả về mảng rỗng thay vì throw error
+      return [];
     }
   },
-
   createHousehold: async (data: {
     householdNumber: string;
     headName: string;
@@ -155,7 +157,7 @@ export const api = {
         dob: item.DateOfBirth || item.DOB || '',
         gender: (item.Sex === 'Nam') ? Gender.MALE : Gender.FEMALE,
         birthPlace: item.PlaceOfBirth || item.BirthPlace || '',
-        origin: item.Hometown || item.Origin || '',
+        origin: item.Hometown || item.Origin || item.origin || '',
         ethnicity: item.Ethnicity || 'Kinh',
         job: item.Occupation || item.Job || '',
         idCardNumber: item.IDCardNumber || item.IdentityCard || '',
@@ -296,24 +298,25 @@ export const api = {
     }
   },
 
+  // --- FEE COLLECTION (Đợt thu phí) ---
   createFeeCampaign: async (data: {
     name: string;
-    type: FeeType;
+    type: FeeType; // MANDATORY hoặc VOLUNTARY
     amount?: number;
-    amountPerMonthPerPerson?: number;
     startDate: string;
     endDate?: string;
     description?: string;
   }) => {
     try {
       const payload = {
+        // BE yêu cầu FeeTypeID: 1 cho Bắt buộc, 2 cho Tự nguyện (theo logic thông thường của DB này)
+        FeeTypeID: data.type === FeeType.MANDATORY ? 1 : 2,
         CollectionName: data.name,
-        Type: data.type === FeeType.MANDATORY ? 'Bắt buộc' : 'Tự nguyện',
-        Amount: data.amount || 0,
-        AmountPerMonth: data.amountPerMonthPerPerson || 0,
         StartDate: data.startDate,
-        EndDate: data.endDate || '',
-        Description: data.description || ''
+        EndDate: data.endDate || null,
+        TotalAmount: data.amount || 0,
+        Notes: data.description || '',
+        Status: 'Đang thu'
       };
       const res = await axiosInstance.post('/fee-collection/create-collection', payload);
       return res.data;
@@ -322,7 +325,6 @@ export const api = {
       throw error;
     }
   },
-
   // --- FEE DETAIL (Chi tiết phí) ---
   getFeeDetails: async (collectionId?: string) => {
     try {
@@ -418,7 +420,6 @@ export const api = {
     amount: number;
     paymentDate: string;
     collectorName: string;
-    paymentMethod?: string;
   }) => {
     try {
       const payload = {
@@ -426,8 +427,11 @@ export const api = {
         CollectionID: data.campaignId,
         Amount: data.amount,
         PaymentDate: data.paymentDate,
+        PaymentMethod: 'Tiền mặt',
+        PaymentStatus: 'Đã đóng',
         CollectorName: data.collectorName
       };
+      // Lưu ý: BE đang dùng FeeDetailController để xử lý Payment
       const res = await axiosInstance.post('/payment/create-payment', payload);
       return res.data;
     } catch (error) {
@@ -435,7 +439,6 @@ export const api = {
       throw error;
     }
   },
-
   // --- VEHICLE (Phương tiện) ---
   getVehicles: async () => {
     try {

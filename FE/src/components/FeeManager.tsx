@@ -19,6 +19,7 @@ const FeeManager: React.FC<FeeManagerProps> = ({ households, fees, payments, set
   const [amount, setAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const campaignPayments = payments.filter(p => p.campaignId === selectedCampaign?.id);
   const paidHouseholdIds = new Set(campaignPayments.map(p => p.householdId));
@@ -56,6 +57,30 @@ const FeeManager: React.FC<FeeManagerProps> = ({ households, fees, payments, set
       setError('Có lỗi xảy ra khi thu phí. Vui lòng thử lại.');
       alert('Lỗi: Có lỗi xảy ra khi thu phí.');
     } finally {
+      const handleCreateCampaign = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        try {
+          setIsLoading(true);
+          const data = {
+            name: formData.get('name') as string,
+            type: formData.get('type') as unknown as FeeType,
+            amount: Number(formData.get('amount')),
+            startDate: formData.get('startDate') as string,
+            description: formData.get('description') as string,
+          };
+          await api.createFeeCampaign(data);
+          const updatedFees = await api.getFeeCampaigns();
+          setFees(updatedFees);
+          setIsCreateModalOpen(false);
+          alert('Tạo đợt thu thành công!');
+        } catch (err) {
+          console.error('Lỗi tạo đợt thu:', err);
+          alert('Lỗi khi tạo đợt thu mới');
+        } finally {
+          setIsLoading(false);
+        }
+      };
       setIsLoading(false);
     }
   };

@@ -4,6 +4,7 @@ import Household from '../models/Household.js';
 import Resident from '../models/Resident.js';
 import HouseholdHistory from '../models/HouseholdHistory.js';
 
+
 // Lấy tất cả hộ gia đình
 export const getAllHouseholds = async (req, res) => {
   try {
@@ -66,99 +67,42 @@ export const getHouseholdById = async (req, res) => {
 
 // Thêm hộ gia đình mới
 export const createHousehold = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const {
-      HouseholdNumber,
-      householdNumber,
-      Street,
-      street,
-      Ward,
-      ward,
-      District,
-      district,
-      HouseholdHead,
-      headName,
-      Members,
-      members,
-      Notes
-    } = req.body;
+    const { householdNumber, headName, street, ward, district, Notes } = req.body;
 
-    // Map camelCase từ FE sang PascalCase cho BE
-    const number = HouseholdNumber || householdNumber;
-    const head = HouseholdHead || headName;
-    const st = Street || street;
-    const wa = Ward || ward;
-    const di = District || district;
-    const mem = Members || members || 0;
-
-    if (!number || !head) {
-      return res.status(400).json({
-        error: true,
-        message: 'HouseholdNumber và HouseholdHead là bắt buộc'
-      });
+    if (!householdNumber || !headName) {
+      return res.status(400).json({ error: true, message: 'Số hộ khẩu và chủ hộ là bắt buộc' });
     }
 
+    // 1. Tạo hộ khẩu mới
     const newHousehold = await Household.create({
-      HouseholdNumber: number,
-      Street: st || '',
-      Ward: wa || 'La Khê',
-      District: di || 'Hà Đông',
-      HouseholdHead: head,
-      Members: mem,
+      HouseholdNumber: householdNumber,
+      HouseholdHead: headName,
+      Street: street || '',
+      Ward: ward || 'La Khê',
+      District: district || 'Hà Đông',
+      Members: 1, // Khởi tạo 1 người
       Notes: Notes || ''
-    });
+    }, { transaction: t });
 
-    // Fetch với relations
-    const createdHousehold = await Household.findByPk(newHousehold.HouseholdID, {
-      include: [
-        {
-          model: Resident,
-          attributes: ['ResidentID', 'FullName', 'Sex', 'DateOfBirth', 'Relationship', 'ResidencyStatus']
-        }
-      ]
-    });
+    // 2. Tự động tạo nhân khẩu cho chủ hộ
+    await Resident.create({
+      HouseholdID: newHousehold.HouseholdID,
+      FullName: headName,
+      Relationship: 'Chủ hộ',
+      Sex: 'Nam',
+      ResidencyStatus: 'Thường trú',
+      RegistrationDate: new Date()
+    }, { transaction: t });
 
-    const formatted = {
-      HouseholdID: createdHousehold.HouseholdID,
-      id: createdHousehold.HouseholdID,
-      HouseholdNumber: createdHousehold.HouseholdNumber,
-      householdNumber: createdHousehold.HouseholdNumber,
-      HouseholdHead: createdHousehold.HouseholdHead,
-      headName: createdHousehold.HouseholdHead,
-      Street: createdHousehold.Street,
-      street: createdHousehold.Street,
-      Ward: createdHousehold.Ward,
-      ward: createdHousehold.Ward,
-      District: createdHousehold.District,
-      district: createdHousehold.District,
-      address: `${createdHousehold.Street}, ${createdHousehold.Ward}, ${createdHousehold.District}`,
-      Members: createdHousehold.Members,
-      members: [],
-      HasVehicle: createdHousehold.HasVehicle,
-      Notes: createdHousehold.Notes
-    };
-
-    res.status(201).json(formatted);
+    await t.commit();
+    res.status(201).json({ error: false, message: 'Tạo hộ khẩu thành công', data: newHousehold });
   } catch (error) {
-    console.error('Error creating household:', error);
-
-    // Xử lý lỗi Unique constraint (Duplicate HouseholdNumber)
-    if (error.name === 'SequelizeUniqueConstraintError' || error.errors?.some(e => e.path === 'HouseholdNumber')) {
-      return res.status(400).json({
-        error: true,
-        message: `Số hộ khẩu "${error.fields?.HouseholdNumber || 'này'}" đã tồn tại trong hệ thống. Vui lòng sử dụng số hộ khẩu khác.`
-      });
-    }
-
-    // Xử lý các lỗi khác
-    res.status(500).json({
-      error: true,
-      message: 'Lỗi tạo hộ khẩu: ' + (error.message || 'Vui lòng thử lại'),
-      details: error.message
-    });
+    await t.rollback();
+    res.status(500).json({ error: true, message: error.message });
   }
 };
-
 // Cập nhật thông tin hộ gia đình
 export const updateHousehold = async (req, res) => {
   try {
