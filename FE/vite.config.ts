@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: '0.0.0.0',
+      // THÊM ĐOẠN NÀY ĐỂ KẾT NỐI BE
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001', // Đảm bảo port này khớp với BE
+          changeOrigin: true,
+          secure: false,
+        }
+      }
     },
     plugins: [react()],
     define: {
