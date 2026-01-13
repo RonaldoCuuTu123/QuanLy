@@ -34,8 +34,8 @@ export const getAllPayments = async (req, res) => {
                 'Amount',
                 'PaymentDate',
                 'PaymentMethod',
-                'PaymentStatus'
-                // 'CollectorName'  // ❌ SKIP - không tồn tại trong DB
+                'PaymentStatus',
+                'CollectorName'
             ],
             include: [
                 { model: FeeCollection, attributes: ['CollectionID', 'CollectionName'] },
@@ -88,12 +88,33 @@ export const createPayment = async (req, res) => {
             return res.status(400).json({ error: true, message: 'Thiếu mã hộ khẩu hoặc mã đợt thu' });
         }
 
+        // Validate PaymentMethod
+        const validPaymentMethods = ['Tiền mặt', 'Chuyển khoản'];
+        const paymentMethodValue = paymentMethod || 'Tiền mặt';
+        if (!validPaymentMethods.includes(paymentMethodValue)) {
+            return res.status(400).json({ 
+                error: true, 
+                message: `PaymentMethod không hợp lệ. Phải là một trong: ${validPaymentMethods.join(', ')}` 
+            });
+        }
+
+        // Kiểm tra HouseholdID và CollectionID có tồn tại không
+        const household = await Household.findByPk(hId);
+        if (!household) {
+            return res.status(404).json({ error: true, message: `Không tìm thấy hộ khẩu với ID: ${hId}` });
+        }
+
+        const feeCollection = await FeeCollection.findByPk(cId);
+        if (!feeCollection) {
+            return res.status(404).json({ error: true, message: `Không tìm thấy đợt thu phí với ID: ${cId}` });
+        }
+
         const newPayment = await FeeDetail.create({
             CollectionID: cId,
             HouseholdID: hId,
             Amount: amount || 0,
-            PaymentDate: paymentDate || new Date(),
-            PaymentMethod: paymentMethod || 'Tiền mặt',
+            PaymentDate: paymentDate || new Date().toISOString().split('T')[0],
+            PaymentMethod: paymentMethodValue,
             PaymentStatus: 'Đã đóng',
             CollectorName: collectorName || 'Cán bộ thu phí'
         });
@@ -101,7 +122,11 @@ export const createPayment = async (req, res) => {
         res.status(201).json({ error: false, message: 'Thu phí thành công', data: newPayment });
     } catch (error) {
         console.error('Lỗi thu phí:', error);
-        res.status(500).json({ error: true, message: error.message });
+        res.status(500).json({ 
+            error: true, 
+            message: error.message || 'Lỗi khi tạo thanh toán',
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 

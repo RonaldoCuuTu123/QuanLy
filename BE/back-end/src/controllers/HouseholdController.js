@@ -13,7 +13,7 @@ export const getAllHouseholds = async (req, res) => {
         {
           model: Resident,
           as: 'Residents',
-          attributes: ['ResidentID', 'FullName', 'Sex', 'DateOfBirth', 'Relationship', 'ResidencyStatus']
+          attributes: ['ResidentID', 'FullName', 'Sex', 'DateOfBirth', 'Relationship', 'ResidencyStatus', 'Hometown', 'IDCardNumber']
         }
       ]
     });
@@ -41,6 +41,10 @@ export const getAllHouseholds = async (req, res) => {
         gender: r.Sex === 'Nam' ? 'Nam' : 'Nữ',
         dob: r.DateOfBirth,
         relationToHead: r.Relationship,
+        origin: r.Hometown || 'Chưa cập nhật',
+        Hometown: r.Hometown || 'Chưa cập nhật',
+        idCardNumber: r.IDCardNumber || '',
+        IDCardNumber: r.IDCardNumber || '',
         status: r.ResidencyStatus
       })),
       HasVehicle: h.HasVehicle,
@@ -131,7 +135,7 @@ export const updateHousehold = async (req, res) => {
       include: [
         {
           model: Resident,
-          attributes: ['ResidentID', 'FullName', 'Sex', 'DateOfBirth', 'Relationship', 'ResidencyStatus']
+          attributes: ['ResidentID', 'FullName', 'Sex', 'DateOfBirth', 'Relationship', 'ResidencyStatus', 'Hometown', 'IDCardNumber']
         }
       ]
     });
@@ -158,6 +162,10 @@ export const updateHousehold = async (req, res) => {
         gender: r.Sex === 'Nam' ? 'Nam' : 'Nữ',
         dob: r.DateOfBirth,
         relationToHead: r.Relationship,
+        origin: r.Hometown || 'Chưa cập nhật',
+        Hometown: r.Hometown || 'Chưa cập nhật',
+        idCardNumber: r.IDCardNumber || '',
+        IDCardNumber: r.IDCardNumber || '',
         status: r.ResidencyStatus
       })),
       HasVehicle: updated.HasVehicle,

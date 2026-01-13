@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, Filter, MoreVertical, MapPin, Briefcase, Calendar, ChevronRight, X } from 'lucide-react';
+import { Search, UserPlus, Filter, MoreVertical, MapPin, Briefcase, Calendar, ChevronRight, X, Edit2, Trash2 } from 'lucide-react';
 import { Household, Resident, Gender, ResidentStatus } from '@/types';
 import { api } from '@/services/api';
 
@@ -12,6 +12,8 @@ interface ResidentManagerProps {
 const ResidentManager: React.FC<ResidentManagerProps> = ({ households, setHouseholds }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +67,65 @@ const ResidentManager: React.FC<ResidentManagerProps> = ({ households, setHouseh
     }
   };
 
+  const handleUpdateResident = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingResident) return;
+
+    const formData = new FormData(e.currentTarget);
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const updateData = {
+        fullName: formData.get('fullName') as string,
+        dob: formData.get('dob') as string,
+        gender: formData.get('gender') as Gender,
+        birthPlace: formData.get('birthPlace') as string || '',
+        origin: formData.get('origin') as string || '',
+        ethnicity: formData.get('ethnicity') as string || 'Kinh',
+        job: formData.get('job') as string || '',
+        idCardNumber: formData.get('idCardNumber') as string || '',
+        relationToHead: formData.get('relationToHead') as string,
+      };
+
+      await api.updateResident(editingResident.id, updateData);
+
+      const updatedHouseholds = await api.getHouseholds();
+      setHouseholds(updatedHouseholds);
+
+      setIsEditModalOpen(false);
+      setEditingResident(null);
+      alert('Cập nhật nhân khẩu thành công!');
+    } catch (err: any) {
+      console.error('Lỗi cập nhật nhân khẩu:', err);
+      const errorMessage = err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật nhân khẩu.';
+      setError(errorMessage);
+      alert('Lỗi: ' + errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteResident = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa nhân khẩu này? Hành động này không thể hoàn tác.')) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await api.deleteResident(id);
+      const updatedHouseholds = await api.getHouseholds();
+      setHouseholds(updatedHouseholds);
+      alert('Xóa nhân khẩu thành công!');
+    } catch (err: any) {
+      console.error('Lỗi xóa nhân khẩu:', err);
+      const errorMessage = err.response?.data?.message || 'Có lỗi xảy ra khi xóa nhân khẩu.';
+      alert('Lỗi: ' + errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -96,11 +157,10 @@ const ResidentManager: React.FC<ResidentManagerProps> = ({ households, setHouseh
         {filteredResidents.map(r => (
           <div
             key={r.id}
-            className="group bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 cursor-pointer"
-            onClick={() => setSelectedResident(r)}
+            className="group bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all duration-300"
           >
             <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => setSelectedResident(r)}>
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${r.gender === Gender.MALE ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
                   {r.fullName.charAt(0)}
                 </div>
@@ -109,20 +169,42 @@ const ResidentManager: React.FC<ResidentManagerProps> = ({ households, setHouseh
                   <p className="text-sm text-slate-500">{r.relationToHead}</p>
                 </div>
               </div>
-              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full border ${r.status === ResidentStatus.ACTIVE ? 'bg-green-50 text-green-700 border-green-100' : 'bg-amber-50 text-amber-700 border-amber-100'
-                }`}>
-                {r.status}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full border ${r.status === ResidentStatus.ACTIVE ? 'bg-green-50 text-green-700 border-green-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+                  }`}>
+                  {r.status}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingResident(r);
+                    setIsEditModalOpen(true);
+                  }}
+                  className="p-1.5 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors" title="Sửa"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteResident(r.id);
+                  }}
+                  className="p-1.5 hover:bg-red-50 text-red-600 rounded-lg transition-colors" title="Xóa"
+                  disabled={isLoading}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-2 mb-4">
+            <div className="space-y-2 mb-4 cursor-pointer" onClick={() => setSelectedResident(r)}>
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <Calendar className="w-4 h-4 text-slate-400" />
                 <span>{r.dob}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <MapPin className="w-4 h-4 text-slate-400" />
-                <span>Quê quán: {r.origin}</span>
+                <span>Quê quán: {r.origin || 'Chưa cập nhật'}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <Briefcase className="w-4 h-4 text-slate-400" />
@@ -130,7 +212,7 @@ const ResidentManager: React.FC<ResidentManagerProps> = ({ households, setHouseh
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-xs font-semibold text-slate-400">
+            <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-xs font-semibold text-slate-400 cursor-pointer" onClick={() => setSelectedResident(r)}>
               <span>Hộ: {households.find(h => h.id === r.householdId)?.householdNumber}</span>
               <span className="flex items-center gap-1 group-hover:text-blue-600 transition-colors">
                 Chi tiết <ChevronRight className="w-3 h-3" />
@@ -139,6 +221,75 @@ const ResidentManager: React.FC<ResidentManagerProps> = ({ households, setHouseh
           </div>
         ))}
       </div>
+
+      {/* Edit Resident Modal */}
+      {isEditModalOpen && editingResident && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-lg">Cập nhật Nhân khẩu</h3>
+              <button onClick={() => {
+                setIsEditModalOpen(false);
+                setEditingResident(null);
+              }} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateResident} className="p-6 overflow-y-auto max-h-[80vh]">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="space-y-1 col-span-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Hộ gia đình</label>
+                  <select name="householdId" required disabled className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 bg-slate-50">
+                    <option value={editingResident.householdId}>
+                      {households.find(h => h.id === editingResident.householdId)?.householdNumber} - Chủ hộ: {households.find(h => h.id === editingResident.householdId)?.headName}
+                    </option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Họ và tên</label>
+                  <input name="fullName" required defaultValue={editingResident.fullName} className="w-full px-3 py-2 border border-slate-200 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Ngày sinh</label>
+                  <input name="dob" type="date" required defaultValue={editingResident.dob} className="w-full px-3 py-2 border border-slate-200 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Giới tính</label>
+                  <select name="gender" required className="w-full px-3 py-2 border border-slate-200 rounded-xl" defaultValue={editingResident.gender}>
+                    <option value={Gender.MALE}>Nam</option>
+                    <option value={Gender.FEMALE}>Nữ</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Quan hệ với chủ hộ</label>
+                  <input name="relationToHead" required defaultValue={editingResident.relationToHead} className="w-full px-3 py-2 border border-slate-200 rounded-xl" />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Nguyên quán</label>
+                  <input name="origin" required defaultValue={editingResident.origin} className="w-full px-3 py-2 border border-slate-200 rounded-xl" placeholder="Xã, Huyện, Tỉnh" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Số CCCD (nếu có)</label>
+                  <input name="idCardNumber" defaultValue={editingResident.idCardNumber || ''} className="w-full px-3 py-2 border border-slate-200 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Nghề nghiệp</label>
+                  <input name="job" defaultValue={editingResident.job || ''} className="w-full px-3 py-2 border border-slate-200 rounded-xl" />
+                </div>
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingResident(null);
+                }} className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50">Hủy</button>
+                <button type="submit" disabled={isLoading} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 shadow-lg shadow-blue-600/20">
+                  {isLoading ? 'Đang cập nhật...' : 'Xác nhận'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add Resident Modal */}
       {isAddModalOpen && (

@@ -14,6 +14,8 @@ const HouseholdManager: React.FC<HouseholdManagerProps> = ({ households, setHous
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedHousehold, setSelectedHousehold] = useState<Household | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingHousehold, setEditingHousehold] = useState<Household | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,61 @@ const HouseholdManager: React.FC<HouseholdManagerProps> = ({ households, setHous
       console.error('Lỗi thêm hộ khẩu:', err);
       const errorMessage = err.response?.data?.message || 'Có lỗi xảy ra khi thêm hộ khẩu. Vui lòng thử lại.';
       setError(errorMessage);
+      alert('Lỗi: ' + errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateHousehold = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingHousehold) return;
+
+    const formData = new FormData(e.currentTarget);
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const updateData = {
+        householdNumber: formData.get('number') as string,
+        headName: formData.get('headName') as string,
+        street: formData.get('street') as string,
+        ward: formData.get('ward') as string || 'La Khê',
+        district: formData.get('district') as string || 'Hà Đông',
+      };
+
+      await api.updateHousehold(editingHousehold.id, updateData);
+
+      const updatedHouseholds = await api.getHouseholds();
+      setHouseholds(updatedHouseholds);
+
+      setIsEditModalOpen(false);
+      setEditingHousehold(null);
+      alert('Cập nhật hộ khẩu thành công!');
+    } catch (err: any) {
+      console.error('Lỗi cập nhật hộ khẩu:', err);
+      const errorMessage = err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật hộ khẩu.';
+      setError(errorMessage);
+      alert('Lỗi: ' + errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteHousehold = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa hộ khẩu này? Hành động này không thể hoàn tác.')) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await api.deleteHousehold(id);
+      const updatedHouseholds = await api.getHouseholds();
+      setHouseholds(updatedHouseholds);
+      alert('Xóa hộ khẩu thành công!');
+    } catch (err: any) {
+      console.error('Lỗi xóa hộ khẩu:', err);
+      const errorMessage = err.response?.data?.message || 'Có lỗi xảy ra khi xóa hộ khẩu.';
       alert('Lỗi: ' + errorMessage);
     } finally {
       setIsLoading(false);
@@ -116,8 +173,21 @@ const HouseholdManager: React.FC<HouseholdManagerProps> = ({ households, setHous
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors" title="Tách hộ">
-                        <Split className="w-4 h-4" />
+                      <button
+                        onClick={() => {
+                          setEditingHousehold(h);
+                          setIsEditModalOpen(true);
+                        }}
+                        className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors" title="Sửa"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteHousehold(h.id)}
+                        className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors" title="Xóa"
+                        disabled={isLoading}
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
@@ -166,6 +236,62 @@ const HouseholdManager: React.FC<HouseholdManagerProps> = ({ households, setHous
         </div>
       )}
 
+      {/* Edit Modal */}
+      {isEditModalOpen && editingHousehold && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-lg">Cập nhật Hộ khẩu</h3>
+              <button onClick={() => {
+                setIsEditModalOpen(false);
+                setEditingHousehold(null);
+              }} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateHousehold} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Số hộ khẩu</label>
+                  <input name="number" required defaultValue={editingHousehold.householdNumber} className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Họ tên chủ hộ</label>
+                  <input name="headName" required defaultValue={editingHousehold.headName} className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500 uppercase">Số nhà</label>
+                <input name="address" required defaultValue={editingHousehold.address.split(',')[0]} className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500 uppercase">Đường/Ấp</label>
+                <input name="street" required defaultValue={editingHousehold.street} className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Phường/Xã</label>
+                  <input name="ward" defaultValue={editingHousehold.ward} className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Quận/Huyện</label>
+                  <input name="district" defaultValue={editingHousehold.district} className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20" />
+                </div>
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingHousehold(null);
+                }} className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50">Hủy</button>
+                <button type="submit" disabled={isLoading} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 shadow-lg shadow-blue-600/20">
+                  {isLoading ? 'Đang cập nhật...' : 'Xác nhận'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Detail Modal */}
       {selectedHousehold && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -208,6 +334,7 @@ const HouseholdManager: React.FC<HouseholdManagerProps> = ({ households, setHous
                       <th className="px-4 py-3">Họ và tên</th>
                       <th className="px-4 py-3">Ngày sinh</th>
                       <th className="px-4 py-3">Quan hệ</th>
+                      <th className="px-4 py-3">Nguyên quán</th>
                       <th className="px-4 py-3">CMND/CCCD</th>
                     </tr>
                   </thead>
@@ -222,12 +349,13 @@ const HouseholdManager: React.FC<HouseholdManagerProps> = ({ households, setHous
                               {m.relationToHead}
                             </span>
                           </td>
+                          <td className="px-4 py-3 text-slate-600">{m.origin || 'Chưa cập nhật'}</td>
                           <td className="px-4 py-3 text-slate-600">{m.idCardNumber || 'Chưa cập nhật'}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-slate-400 italic">Chưa có nhân khẩu nào được đăng ký</td>
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">Chưa có nhân khẩu nào được đăng ký</td>
                       </tr>
                     )}
                   </tbody>

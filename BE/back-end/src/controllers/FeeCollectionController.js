@@ -6,18 +6,28 @@ import FeeType from '../models/FeeType.js';
 const mapFeeCollectionToFE = (feeCollection) => {
   if (!feeCollection) return null;
 
+  // Xác định type dựa trên FeeType.Category hoặc FeeTypeName
+  let typeValue = 'Tự nguyện'; // default
+  if (feeCollection.FeeType) {
+    if (feeCollection.FeeType.Category === 'Bắt buộc' || feeCollection.FeeType.FeeTypeName === 'Bắt buộc') {
+      typeValue = 'Bắt buộc';
+    }
+  } else if (feeCollection.FeeTypeID === 1) {
+    // Fallback: nếu không có FeeType object, dựa vào ID
+    typeValue = 'Bắt buộc';
+  }
+
   return {
     id: feeCollection.CollectionID,
     CollectionID: feeCollection.CollectionID,
     name: feeCollection.CollectionName,
     CollectionName: feeCollection.CollectionName,
-    type: feeCollection.FeeType?.TypeName === 'Bắt buộc' ? 'Bắt buộc' : 'Tự nguyện',
+    type: typeValue,
     feeTypeId: feeCollection.FeeTypeID,
     FeeTypeID: feeCollection.FeeTypeID,
     amount: feeCollection.TotalAmount || 0,
     TotalAmount: feeCollection.TotalAmount || 0,
-    amountPerMonthPerPerson: feeCollection.AmountPerMonth || 0,
-    AmountPerMonth: feeCollection.AmountPerMonth || 0,
+    // Bỏ AmountPerMonth nếu không có trong DB
     startDate: feeCollection.StartDate,
     StartDate: feeCollection.StartDate,
     endDate: feeCollection.EndDate,
@@ -40,11 +50,11 @@ export const getAllFeeCollections = async (req, res) => {
         'StartDate',
         'EndDate',
         'TotalAmount',
-        // 'AmountPerMonth',  // ❌ SKIP - không tồn tại trong DB
         'Status',
         'Notes'
       ],
-      include: [{ model: FeeType, attributes: ['FeeTypeID', 'FeeTypeName'] }]
+      // Đồng bộ attributes của FeeType - thêm Category để xác định type
+      include: [{ model: FeeType, attributes: ['FeeTypeID', 'FeeTypeName', 'Category'] }]
     });
 
     const formattedCollections = feeCollections.map(mapFeeCollectionToFE);
@@ -60,7 +70,7 @@ export const getFeeCollectionById = async (req, res) => {
   try {
     const { id } = req.params;
     const feeCollection = await FeeCollection.findByPk(id, {
-      include: [{ model: FeeType, attributes: ['FeeTypeID', 'TypeName'] }]
+      include: [{ model: FeeType, attributes: ['FeeTypeID', 'FeeTypeName', 'Category'] }]
     });
 
     if (!feeCollection) {
@@ -88,8 +98,6 @@ export const createFeeCollection = async (req, res) => {
       endDate,
       Amount,
       amount,
-      AmountPerMonth,
-      amountPerMonth,
       TotalAmount,
       Description,
       description,
@@ -103,7 +111,6 @@ export const createFeeCollection = async (req, res) => {
     const sDate = StartDate || startDate;
     const eDate = EndDate || endDate;
     const totalAmount = Amount || amount || TotalAmount || 0;
-    const monthlyAmount = AmountPerMonth || amountPerMonth || 0;
     const notes = Description || description || Notes || '';
     const stat = Status || status || 'Đang thu';
 
@@ -111,26 +118,58 @@ export const createFeeCollection = async (req, res) => {
       return res.status(400).json({ error: true, message: 'CollectionName and StartDate are required' });
     }
 
+    // Kiểm tra FeeTypeID có tồn tại không
+    const feeType = await FeeType.findByPk(feeTypeID);
+    if (!feeType) {
+      return res.status(400).json({ 
+        error: true, 
+        message: `FeeTypeID ${feeTypeID} không tồn tại. Vui lòng kiểm tra lại.` 
+      });
+    }
+
+    // Validate Status phải là một trong các giá trị ENUM
+    const validStatuses = ['Đang thu', 'Hoàn thành', 'Kết thúc'];
+    if (stat && !validStatuses.includes(stat)) {
+      return res.status(400).json({ 
+        error: true, 
+        message: `Status không hợp lệ. Phải là một trong: ${validStatuses.join(', ')}` 
+      });
+    }
+
+    // KHÔNG chèn AmountPerMonth vào đây nếu DB không có trường này
     const newFeeCollection = await FeeCollection.create({
       FeeTypeID: feeTypeID,
       CollectionName: collectionName,
       StartDate: sDate,
       EndDate: eDate || null,
       TotalAmount: totalAmount,
-      AmountPerMonth: monthlyAmount,
       Status: stat,
       Notes: notes
     });
 
-    // Fetch with relations
+    // Fetch lại bản ghi vừa tạo kèm quan hệ FeeType để trả về FE
     const created = await FeeCollection.findByPk(newFeeCollection.CollectionID, {
-      include: [{ model: FeeType, attributes: ['FeeTypeID', 'TypeName'] }]
+      include: [{ model: FeeType, attributes: ['FeeTypeID', 'FeeTypeName', 'Category'] }]
     });
 
-    res.status(201).json(mapFeeCollectionToFE(created));
+    if (!created) {
+      return res.status(500).json({ error: true, message: 'Không thể lấy lại dữ liệu vừa tạo' });
+    }
+
+    const mappedData = mapFeeCollectionToFE(created);
+    if (!mappedData) {
+      return res.status(500).json({ error: true, message: 'Lỗi khi map dữ liệu' });
+    }
+
+    res.status(201).json(mappedData);
   } catch (error) {
     console.error('Error creating fee collection:', error);
-    res.status(500).json({ error: true, message: 'Error creating fee collection', details: error.message });
+    res.status(500).json({ 
+      error: true, 
+      message: 'Error creating fee collection', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -142,23 +181,20 @@ export const updateFeeCollection = async (req, res) => {
 
     if (!feeCollection) return res.status(404).json({ error: true, message: 'FeeCollection not found' });
 
-    // Map and update fields
     const updates = {
       CollectionName: req.body.CollectionName || req.body.name,
       StartDate: req.body.StartDate || req.body.startDate,
       EndDate: req.body.EndDate || req.body.endDate,
       TotalAmount: req.body.TotalAmount || req.body.amount,
-      AmountPerMonth: req.body.AmountPerMonth || req.body.amountPerMonth,
       Status: req.body.Status || req.body.status,
       Notes: req.body.Notes || req.body.description
     };
 
-    // Remove undefined values
     Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
     await feeCollection.update(updates);
     const updated = await FeeCollection.findByPk(id, {
-      include: [{ model: FeeType, attributes: ['FeeTypeID', 'TypeName'] }]
+      include: [{ model: FeeType, attributes: ['FeeTypeID', 'FeeTypeName', 'Category'] }]
     });
 
     res.status(200).json(mapFeeCollectionToFE(updated));

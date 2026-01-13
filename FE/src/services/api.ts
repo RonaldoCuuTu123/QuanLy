@@ -235,13 +235,13 @@ export const api = {
     try {
       const payload = {
         FullName: data.fullName || data.FullName,
-        DOB: data.dob || data.DOB,
-        Sex: data.gender === Gender.MALE ? 'Nam' : 'Nữ' || data.Sex,
-        BirthPlace: data.birthPlace || data.BirthPlace,
-        Origin: data.origin || data.Origin,
+        DateOfBirth: data.dob || data.DateOfBirth || data.DOB,
+        Sex: data.gender === Gender.MALE ? 'Nam' : (data.gender === Gender.FEMALE ? 'Nữ' : data.Sex),
+        PlaceOfBirth: data.birthPlace || data.PlaceOfBirth || data.BirthPlace,
+        Hometown: data.origin || data.Hometown || data.Origin,
         Ethnicity: data.ethnicity || data.Ethnicity,
-        Job: data.job || data.Job,
-        IdentityCard: data.idCardNumber || data.IdentityCard,
+        Occupation: data.job || data.Occupation || data.Job,
+        IDCardNumber: data.idCardNumber || data.IDCardNumber || data.IdentityCard,
         Relationship: data.relationToHead || data.Relationship
       };
       const res = await axiosInstance.put(`/residents/update-resident/${id}`, payload);
@@ -281,16 +281,19 @@ export const api = {
         console.error('BE Error:', res.data.message);
         return [];
       }
-      return (res.data || []).map((item: any) => ({
+      // Đảm bảo res.data là array
+      const dataArray = Array.isArray(res.data) ? res.data : [];
+      return dataArray.map((item: any) => ({
         id: item.CollectionID || item.id,
-        name: item.CollectionName || '',
-        type: item.Type === 'Bắt buộc' ? FeeType.MANDATORY : FeeType.VOLUNTARY,
-        amount: item.Amount || 0,
+        name: item.CollectionName || item.name || '',
+        // Backend trả về 'type' là 'Bắt buộc' hoặc 'Tự nguyện'
+        type: (item.type === 'Bắt buộc' || item.Type === 'Bắt buộc') ? FeeType.MANDATORY : FeeType.VOLUNTARY,
+        amount: item.TotalAmount || item.amount || 0,
         amountPerMonthPerPerson: item.AmountPerMonth || 0,
-        startDate: item.StartDate || '',
-        endDate: item.EndDate || '',
-        description: item.Description || '',
-        status: item.Status || 'Hoạt động'
+        startDate: item.StartDate || item.startDate || '',
+        endDate: item.EndDate || item.endDate || '',
+        description: item.Notes || item.description || item.Description || '',
+        status: item.Status || item.status || 'Hoạt động'
       }));
     } catch (error) {
       console.error('Lỗi lấy danh sách đợt thu:', error);
@@ -319,9 +322,22 @@ export const api = {
         Status: 'Đang thu'
       };
       const res = await axiosInstance.post('/fee-collection/create-collection', payload);
+      
+      // Kiểm tra response có lỗi không
+      if (res.data && res.data.error) {
+        throw new Error(res.data.message || 'Lỗi khi tạo đợt thu');
+      }
+      
+      // Trả về data đã được map từ backend
       return res.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Lỗi tạo đợt thu:', error);
+      // Nếu có response từ server, throw với message từ server
+      if (error.response && error.response.data) {
+        const errorData = error.response.data;
+        const errorMessage = errorData.message || errorData.details || 'Lỗi khi tạo đợt thu';
+        throw new Error(errorMessage);
+      }
       throw error;
     }
   },
